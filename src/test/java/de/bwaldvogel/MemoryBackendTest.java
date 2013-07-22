@@ -82,7 +82,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10147);
-            assertThat(e.getMessage()).isEqualTo("Invalid modifier specified: $foo");
+            assertThat(e.getMessage()).contains("Invalid modifier specified: $foo");
         }
     }
 
@@ -223,7 +223,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(12050);
-            assertThat(e.getMessage()).startsWith("cannot delete from system namespace");
+            assertThat(e.getMessage()).contains("cannot delete from system namespace");
         }
 
         try {
@@ -231,7 +231,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(12050);
-            assertThat(e.getMessage()).startsWith("cannot delete from system namespace");
+            assertThat(e.getMessage()).contains("cannot delete from system namespace");
         }
     }
 
@@ -242,7 +242,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10156);
-            assertThat(e.getMessage()).startsWith("cannot update system collection");
+            assertThat(e.getMessage()).contains("cannot update system collection");
         }
 
         try {
@@ -250,7 +250,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10156);
-            assertThat(e.getMessage()).startsWith("cannot update system collection");
+            assertThat(e.getMessage()).contains("cannot update system collection");
         }
     }
 
@@ -367,7 +367,6 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10148);
-            assertThat(e.getMessage()).contains("command failed [findandmodify]");
             assertThat(e.getMessage()).contains("Mod on _id not allowed");
         }
     }
@@ -400,22 +399,29 @@ public class MemoryBackendTest {
         assertThat(collection.count()).isZero();
     }
 
+    // https://github.com/foursquare/fongo/issues/32
     @Test
     public void testFindAndModifyReturnNew() {
-        collection.insert(json("_id: 1, a: 1"));
-        DBObject result = collection.findAndModify(json("_id: 1"), null, null, false, json("$inc: {a:1}"), true, false);
+        collection.insert(json("_id: 1, a: 1, b: {c: 1}"));
 
-        assertThat(result).isEqualTo(json("_id: 1, a: 2"));
+        DBObject query = json("_id: 1");
+        DBObject update = json("$inc: {a: 1, 'b.c': 1}");
+        DBObject result = collection.findAndModify(query, null, null, false, update, true, false);
+
+        assertThat(result).isEqualTo(json("_id: 1, a: 2, b: {c: 2}"));
     }
 
+    // https://github.com/foursquare/fongo/issues/32
     @Test
     public void testFindAndModifyReturnOld() {
-        collection.insert(json("_id: 1, a:1"));
-        DBObject result = collection
-                .findAndModify(json("_id: 1"), null, null, false, json("$inc: {a:1}"), false, false);
+        collection.insert(json("_id: 1, a: 1, b: {c: 1}"));
 
-        assertThat(result).isEqualTo(json("_id: 1, a:1"));
-        assertThat(collection.findOne()).isEqualTo(json("_id: 1, a: 2"));
+        DBObject query = json("_id: 1");
+        DBObject update = json("$inc: {a: 1, 'b.c': 1}");
+        DBObject result = collection.findAndModify(query, null, null, false, update, false, false);
+
+        assertThat(result).isEqualTo(json("_id: 1, a: 1, b: {c: 1}"));
+        assertThat(collection.findOne(query)).isEqualTo(json("_id: 1, a: 2, b: {c: 2}"));
     }
 
     @Test
@@ -695,8 +701,8 @@ public class MemoryBackendTest {
             collection.update(json("_id: 1"), json("_id:2, a:4"));
             fail("MongoException expected");
         } catch (MongoException e) {
-            assertThat(e.getMessage()).isEqualTo(
-                    "cannot change _id of a document old:{ \"_id\" : 1} new:{ \"_id\" : 2}");
+            assertThat(e.getMessage()).contains(
+                    "cannot change _id of a document old:{ \\\"_id\\\" : 1} new:{ \\\"_id\\\" : 2}");
         }
 
         // test with $set
@@ -705,7 +711,7 @@ public class MemoryBackendTest {
             collection.update(json("_id: 1"), new BasicDBObject("$set", json("_id: 2")));
             fail("should throw exception");
         } catch (MongoException e) {
-            assertThat(e.getMessage()).isEqualTo("Mod on _id not allowed");
+            assertThat(e.getMessage()).contains("Mod on _id not allowed");
         }
     }
 
@@ -827,7 +833,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(16459);
-            assertThat(e.getMessage()).startsWith("attempt to insert in system namespace");
+            assertThat(e.getMessage()).contains("attempt to insert in system namespace");
         }
 
         try {
@@ -835,7 +841,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(16459);
-            assertThat(e.getMessage()).startsWith("attempt to insert in system namespace");
+            assertThat(e.getMessage()).contains("attempt to insert in system namespace");
         }
     }
 
@@ -987,6 +993,18 @@ public class MemoryBackendTest {
         collection.remove(json("_id: 2"));
 
         assertThat(collection.findOne(json("_id: 2"))).isNull();
+        assertThat(collection.count()).isEqualTo(3);
+
+        collection.remove(json("_id: {$gte: 3}"));
+        assertThat(collection.count()).isEqualTo(1);
+        assertThat(collection.findOne()).isEqualTo(json("_id: 1"));
+    }
+
+    @Test
+    public void testRemoveSingle() throws Exception {
+        DBObject obj = new BasicDBObject("_id", ObjectId.get());
+        collection.insert(obj);
+        collection.remove(obj);
     }
 
     @Test
@@ -1133,7 +1151,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(16650);
-            assertThat(e.getMessage()).isEqualTo(
+            assertThat(e.getMessage()).contains(
                     "Cannot apply the positional operator without a corresponding query field containing an array.");
         }
     }
@@ -1146,7 +1164,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(16650);
-            assertThat(e.getMessage()).isEqualTo(
+            assertThat(e.getMessage()).contains(
                     "Cannot apply the positional operator without a corresponding query field containing an array.");
         }
     }
@@ -1165,7 +1183,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(15896);
-            assertThat(e.getMessage()).isEqualTo("Modified field name may not start with $");
+            assertThat(e.getMessage()).contains("Modified field name may not start with $");
         }
 
         // unset ok to remove bad fields
@@ -1176,7 +1194,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(15896);
-            assertThat(e.getMessage()).isEqualTo("Modified field name may not start with $");
+            assertThat(e.getMessage()).contains("Modified field name may not start with $");
         }
 
         try {
@@ -1184,7 +1202,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(15896);
-            assertThat(e.getMessage()).isEqualTo("Modified field name may not start with $");
+            assertThat(e.getMessage()).contains("Modified field name may not start with $");
         }
 
     }
@@ -1232,7 +1250,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10141);
-            assertThat(e.getMessage()).isEqualTo("Cannot apply $push modifier to non-array");
+            assertThat(e.getMessage()).contains("Cannot apply $push modifier to non-array");
         }
 
         // push with multiple fields
@@ -1259,7 +1277,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10153);
-            assertThat(e.getMessage()).isEqualTo("Modifier $pushAll allowed for arrays only");
+            assertThat(e.getMessage()).contains("Modifier $pushAll allowed for arrays only");
         }
 
         collection.update(idObj, json("$pushAll: {field: ['value', 'value2']}"));
@@ -1280,7 +1298,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10141);
-            assertThat(e.getMessage()).isEqualTo("Cannot apply $addToSet modifier to non-array");
+            assertThat(e.getMessage()).contains("Cannot apply $addToSet modifier to non-array");
         }
 
         // addToSet with multiple fields
@@ -1343,7 +1361,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10142);
-            assertThat(e.getMessage()).isEqualTo("Cannot apply $pull modifier to non-array");
+            assertThat(e.getMessage()).contains("Cannot apply $pull modifier to non-array");
         }
 
         // pull standard
@@ -1374,7 +1392,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10142);
-            assertThat(e.getMessage()).isEqualTo("Cannot apply $pullAll modifier to non-array");
+            assertThat(e.getMessage()).contains("Cannot apply $pullAll modifier to non-array");
         }
 
         collection.update(obj, json("$set: {field1: ['value1', 'value2', 'value1', 'value3', 'value4', 'value3']}"));
@@ -1388,7 +1406,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10153);
-            assertThat(e.getMessage()).isEqualTo("Modifier $pullAll allowed for arrays only");
+            assertThat(e.getMessage()).contains("Modifier $pullAll allowed for arrays only");
         }
 
     }
@@ -1497,7 +1515,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10148);
-            assertThat(e.getMessage()).isEqualTo("Mod on _id not allowed");
+            assertThat(e.getMessage()).contains("Mod on _id not allowed");
         }
 
         collection.update(obj, json("$unset: {a:'', b:''}"));
@@ -1546,7 +1564,7 @@ public class MemoryBackendTest {
             collection.update(json("_id: 1"), json("$inc: {a: 1}"));
             fail("MongoException expected");
         } catch (MongoException e) {
-            assertThat(e.getMessage()).startsWith("can not increment");
+            assertThat(e.getMessage()).contains("can not increment");
         }
     }
 
@@ -1615,7 +1633,7 @@ public class MemoryBackendTest {
             fail("MongoException expected");
         } catch (MongoException e) {
             assertThat(e.getCode()).isEqualTo(10158);
-            assertThat(e.getMessage()).isEqualTo("multi update only works with $ operators");
+            assertThat(e.getMessage()).contains("multi update only works with $ operators");
         }
     }
 
@@ -1705,6 +1723,51 @@ public class MemoryBackendTest {
         assertThat(isMaster.getDate("localTime")).isInstanceOf(Date.class);
         assertThat(isMaster.getInt("maxBsonObjectSize")).isGreaterThan(1000);
         assertThat(isMaster.getInt("maxMessageSizeBytes")).isGreaterThan(isMaster.getInt("maxBsonObjectSize"));
+    }
+
+    // https://github.com/foursquare/fongo/pull/26
+    // http://stackoverflow.com/questions/12403240/storing-null-vs-not-storing-the-key-at-all-in-mongodb
+    @Test
+    public void testFindWithNullOrNoFieldFilter() {
+
+        collection.insert(json("name: 'jon', group: 'group1'"));
+        collection.insert(json("name: 'leo', group: 'group1'"));
+        collection.insert(json("name: 'neil1', group: 'group2'"));
+        collection.insert(json("name: 'neil2', group: null"));
+        collection.insert(json("name: 'neil3'"));
+
+        // check {group: null} vs {group: {$exists: false}} filter
+        List<DBObject> objs = collection.find(json("group: null")).toArray();
+        assertThat(objs).as("should have two neils (neil2, neil3)").hasSize(2);
+
+        objs = collection.find(json("group: {$exists: false}")).toArray();
+        assertThat(objs).as("should have one neils (neil3)").hasSize(1);
+
+        // same check but for fields which do not exist in DB
+        objs = collection.find(json("other: null")).toArray();
+        assertThat(objs).as("should return all documents").hasSize(5);
+
+        objs = collection.find(json("other: {$exists: false}")).toArray();
+        assertThat(objs).as("should return all documents").hasSize(5);
+    }
+
+    // https://github.com/foursquare/fongo/issues/28
+    @Test
+    public void testExplicitlyAddedObjectIdNotNew() {
+        ObjectId oid = new ObjectId();
+        assertThat(oid.isNew()).as("should be new").isTrue();
+        collection.save(new BasicDBObject("_id", oid));
+        ObjectId retrievedOid = (ObjectId) collection.findOne().get("_id");
+        assertThat(retrievedOid).as("retrieved should still equal the inserted").isEqualTo(oid);
+        assertThat(retrievedOid.isNew()).as("retrieved should not be new").isFalse();
+    }
+
+    // https://github.com/foursquare/fongo/issues/28
+    @Test
+    public void testAutoCreatedObjectIdNotNew() {
+        collection.save(new BasicDBObject());
+        ObjectId retrievedOid = (ObjectId) collection.findOne().get("_id");
+        assertThat(retrievedOid.isNew()).as("retrieved should not be new").isFalse();
     }
 
 }
