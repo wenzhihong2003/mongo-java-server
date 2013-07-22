@@ -1,28 +1,39 @@
 [![Build Status](https://travis-ci.org/bwaldvogel/mongo-java-server.png?branch=master)](https://travis-ci.org/bwaldvogel/mongo-java-server)
 
-## MongoDB Java Server ##
+# MongoDB Java Server #
 
-Implementation of the core [MongoDB][mongodb] server using Java with different
-possible backends. The [MongoDB Wire Protocol][wire-protocol] is implemented
-using [Netty][netty].
+Stub implementation of the core [MongoDB][mongodb] server in Java.
+The [MongoDB Wire Protocol][wire-protocol] is implemented with [Netty][netty].
+Different backends are possible and can be easily extended.
 
-### In-Memory backend ###
+## In-Memory backend ##
 
 The in-memory backend is the default, such that mongo-java-server can be used
-as stub in unit tests. It doesn't support all features of the original MongoDB,
-and probably never will.
+as stub in unit tests. It does not support all features of the original
+MongoDB, and probably never will.
 
-### Ideas for other backends ###
+## Ideas for other backends ##
 
-#### Faulty backend ####
+### Faulty backend ###
 
 A faulty backend could randomly fail queries or cause timeouts. This could be
 used to test the client for error resilience.
 
-#### Fuzzy backend ####
+### Fuzzy backend ###
 
 Fuzzing the wire protocol could be used to check the robustness of client
 drivers.
+
+## Usage
+Add the following Maven dependency to your project:
+
+```xml
+<dependency>
+	<groupId>de.bwaldvogel</groupId>
+	<artifactId>mongo-java-server</artifactId>
+	<version>1.1.1</version>
+</dependency>
+```
 
 ### Unit test example ###
 
@@ -47,7 +58,7 @@ public class SimpleTest {
 	@After
 	public void tearDown() {
 		client.close();
-		server.shutdown();
+		server.shutdownNow();
 	}
 
 	@Test
@@ -65,7 +76,7 @@ public class SimpleTest {
 }
 ```
 
-### Similar Projects ###
+## Related Work ##
 
 * [jmockmongo][jmockmongo]
 	* shares the basic idea of implementing the wire protocol with Netty
@@ -79,7 +90,7 @@ public class SimpleTest {
 
 [mongodb]: http://www.mongodb.org/
 [wire-protocol]: http://www.mongodb.org/display/DOCS/Mongo+Wire+Protocol
-[netty]: https://netty.io/
+[netty]: http://netty.io/
 [jmockmongo]: https://github.com/thiloplanz/jmockmongo/
 [jongo]: https://github.com/foursquare/fongo/
 [nosql-unit]: https://github.com/lordofthejars/nosql-unit/
